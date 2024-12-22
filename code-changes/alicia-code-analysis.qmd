@@ -1,0 +1,239 @@
+---
+title: "Tables & Visualizations for Exploring Alicia's Code"
+format: html
+editor: source
+---
+
+```{r}
+#| label: packages
+
+library(tidyverse)
+library(readxl)
+library(ggtext)
+```
+
+## Data for Analysis
+
+```{r}
+#| label: read-in-data
+
+dec_2018_1 <- read_xlsx(
+  here::here("data", 
+             "r-code-themes.xlsx"), 
+  sheet = "Dec 2018 #1"
+) %>% 
+  mutate(date = "Dec 2018 Script 1")
+
+april_2019_1 <- read_xlsx(
+  here::here("data", 
+             "r-code-themes.xlsx"), 
+  sheet = "April 2019 #1"
+) %>% 
+  mutate(date = "April 2019 Script 1")
+
+april_2019_2 <- read_xlsx(
+  here::here("data", 
+             "r-code-themes.xlsx"), 
+  sheet = "April 2019 #2"
+) %>% 
+  mutate(date = "April 2019 Script 2")
+
+sept_2019_1 <- read_xlsx(
+  here::here("data", 
+             "r-code-themes.xlsx"), 
+  sheet = "Sept 2019 #1"
+) %>% 
+  mutate(date = "Sept 2019 Script 1")
+
+sept_2019_2 <- read_xlsx(
+  here::here("data", 
+             "r-code-themes.xlsx"), 
+  sheet = "Sept 2019 #2"
+) %>% 
+  mutate(date = "Sept 2019 Script 2")
+```
+
+## Data Cleaning
+
+```{r}
+full_data <- bind_rows(dec_2018_1, 
+                       april_2019_1, 
+                       april_2019_2, 
+                       sept_2019_1, 
+                       sept_2019_2) %>% 
+  janitor::clean_names() %>% 
+  select(date, r_code, qualitative_theme, everything())
+
+cleaned_data <- full_data %>%
+  filter(qualitative_theme != "unknown") %>% 
+  mutate(
+    qualitative_theme = case_when(
+      qualitative_theme == "comment" ~ "reproducibility", 
+      qualitative_theme == "package" ~ "reproducibility",
+      qualitative_theme == "data_inspect" ~ "reproducibility",
+      qualitative_theme == "data_summary" ~ "data_wrangling",
+      .default = qualitative_theme), 
+    qualitative_theme = fct_recode(qualitative_theme, 
+                                        "Data Model" = "data_model", 
+                                        "Data Visual" = "data_visual", 
+                                        "Data Wrangling" = "data_wrangling", 
+                                        "Reproducibility" = "reproducibility"), 
+    script = if_else(
+      str_detect(date, pattern = "Script 1"), 
+      "Script #1", 
+      "Script #2"
+    ), 
+    script = fct_relevel(script, 
+                         "Script #1", 
+                         "Script #2"),
+    date = case_when(
+      str_detect(date, pattern = "Dec 2018") ~ "December 2018",
+      str_detect(date, pattern = "April 2019") ~ "April 2019",
+      str_detect(date, pattern = "Sept 2019") ~ "September 2019"
+         ), 
+    date = fct_relevel(date,
+                       "September 2019",
+                       "April 2019",
+                       "December 2018")
+         )
+```
+
+## Size of Each Script
+
+```{r}
+total_code_table <- cleaned_data %>% 
+  count(date, script)
+```
+
+## Proportion of Alicia's Code in Each Theme by Date
+
+```{r}
+alicia_theme_table <- cleaned_data %>% 
+  mutate(
+    qualitative_theme = case_when(
+      qualitative_theme == "comment" ~ "reproducibility", 
+      qualitative_theme == "package" ~ "reproducibility",
+      qualitative_theme == "data_inspect" ~ "reproducibility",
+      qualitative_theme == "data_summary" ~ "data_wrangling",
+      .default = qualitative_theme)
+    ) %>% 
+  count(date, qualitative_theme) %>% 
+  pivot_wider(names_from = qualitative_theme, 
+              values_from = n, 
+              values_fill = 0) %>% 
+  janitor::adorn_totals(where = "col")
+
+```
+
+## Visual of Alicia's Code Over Time
+
+```{r}
+total_code_labels <- total_code_table %>% 
+  mutate(x_location = case_when(script == "Script #1" & date == "September 2019" ~ 495, 
+                                script == "Script #1" & date == "April 2019" ~ 105, 
+                                script == "Script #1" & date == "December 2018" ~ 55, 
+                                script == "Script #2" & date == "September 2019" ~ 50, 
+                                script == "Script #2" & date == "April 2019" ~ 46
+                                )
+         )
+
+
+alicia_themes <- ggplot(data = cleaned_data) +
+  geom_bar(mapping = aes(y = date, 
+                     fill = fct_inorder(qualitative_theme)
+                     ), 
+           position = "stack") +
+  geom_text(data = total_code_labels, 
+            mapping = aes(x = x_location, y = date, label = n), 
+            size = 3
+            ) +
+  facet_wrap(~script, 
+             ncol = 1, 
+             scales = "free_x") +
+  theme(legend.position = "top") +
+  # scale_x_continuous(labels = scales::label_percent(), 
+  #                    breaks = seq(from = 0, to = 1, by = 0.25)
+  #                    ) +
+  labs(y = "", 
+       x = "", 
+       fill = "", 
+       title = "Percentage of Themes Found in Alicia's Research Code", 
+       subtitle = "Annotations Indicate Total Lines of Code") +
+  scale_fill_brewer(palette = "Set3", 
+                    guide = guide_legend(reverse = TRUE)
+                    ) 
+  
+  
+ggsave(filename = "alicia-themes-legend-top.png", 
+       plot = alicia_themes, 
+       path = "images", 
+       width = 8, 
+       height = 6)
+```
+
+## Visual of Code Errors Over Time
+
+```{r}
+code_errors_visual <- cleaned_data %>% 
+  mutate(error = replace_na(error, replace = "no error"), 
+         error = if_else(error == "error", 
+                         "error", 
+                         "no error")
+         ) %>% 
+ggplot(mapping = aes(y = date, 
+                     fill = fct_inorder(error)
+                     )
+       ) +
+  geom_bar(position = "fill") +
+  facet_wrap(~ script, 
+             ncol = 1) +
+  scale_x_continuous(labels = scales::label_percent()) +
+  labs(y = "", 
+       x = "", 
+       fill = "", 
+       title = str_c("Percentage of Alicia's Code Which ",
+      "<span style = 'color:#A6CEE3'>**Would**</span>",
+      " and <span style = 'color:#1F78B4'>**Would Not**</span>",
+      " Execute")
+      ) +
+  scale_fill_brewer(palette = "Paired", 
+                    guide = guide_legend(reverse = TRUE)
+                    ) + 
+  theme(legend.position = "none", 
+        plot.title = ggtext::element_markdown(size = 14)
+        )
+
+ggsave(filename = "code-errors-no-legend.png", 
+       plot = code_errors_visual, 
+       path = "images", 
+       width = 8, 
+       height = 6)
+```
+
+## Table of Code Errors Over Time
+
+```{r}
+full_data %>% 
+  mutate(error = replace_na(error, replace = "no error"), 
+         error = if_else(error == "error", 
+                         "error", 
+                         "no error")
+         ) %>% 
+  group_by(date, error) %>% 
+  summarize(n = n(), 
+            .groups = "drop"
+            ) %>% 
+  group_by(date) %>% 
+  mutate(prop = n / sum(n),
+         across(.cols = c(n, prop), 
+                .fns = ~as.character(.x)
+                ), 
+         prop = str_c(prop, " (", n, ")")
+         ) %>% 
+  select(-n) %>% 
+  pivot_wider(names_from = error,
+              values_from = prop) %>% 
+  mutate(error = replace_na(error, replace = "0"))
+
+```
+
